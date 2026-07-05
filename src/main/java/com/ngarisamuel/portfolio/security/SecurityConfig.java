@@ -62,7 +62,7 @@ public class SecurityConfig {
                                 "/api/blog",
                                 "/api/blog/**"
                         ).permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/contact").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/contact", "/api/analytics/events").permitAll()
                         .requestMatchers("/api/**").hasAnyAuthority("ADMIN", "SUPERUSER")
                         .anyRequest().permitAll()
                 )
