@@ -59,11 +59,16 @@ public class SecurityConfig {
                                 "/api/education",
                                 "/api/certifications",
                                 "/api/leadership-impact",
-                                "/api/portfolio-agent/snapshot",
+                                "/api/portfolio-agent/**",
                                 "/api/blog",
                                 "/api/blog/**"
                         ).permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/contact", "/api/analytics/events").permitAll()
+                        .requestMatchers(HttpMethod.POST,
+                                "/api/contact",
+                                "/api/analytics/events",
+                                "/api/portfolio-agent/reindex",
+                                "/api/portfolio-agent/search"
+                        ).permitAll()
                         .requestMatchers("/api/**").hasAnyAuthority("ADMIN", "SUPERUSER")
                         .anyRequest().permitAll()
                 )

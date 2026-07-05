@@ -27,6 +27,11 @@ import org.springframework.stereotype.Service;
 @Service
 @RequiredArgsConstructor
 public class PortfolioAgentService {
+    private static final int DEFAULT_CONTEXT_MAX_CHARS = 16000;
+    private static final int MIN_CONTEXT_MAX_CHARS = 4000;
+    private static final int MAX_CONTEXT_MAX_CHARS = 40000;
+    private static final int DEFAULT_SEARCH_LIMIT = 8;
+    private static final int MAX_SEARCH_LIMIT = 20;
 
     private final ProfileService profileService;
     private final ProjectService projectService;
@@ -36,6 +41,8 @@ public class PortfolioAgentService {
     private final CertificationService certificationService;
     private final LeadershipImpactService leadershipImpactService;
     private final BlogPostService blogPostService;
+    private final PortfolioAgentEmbeddingService embeddingService;
+    private final PortfolioAgentVectorStore vectorStore;
 
     public PortfolioAgentSnapshot snapshot(String portfolioId) {
         String normalizedPortfolioId = PortfolioIds.normalize(portfolioId);
@@ -84,6 +91,105 @@ public class PortfolioAgentService {
                 leadershipImpact,
                 blogPosts,
                 chunks
+        );
+    }
+
+    public PortfolioAgentFacts facts(String portfolioId) {
+        return snapshot(portfolioId).facts();
+    }
+
+    public List<PortfolioAgentChunk> chunks(String portfolioId) {
+        return snapshot(portfolioId).chunks();
+    }
+
+    public PortfolioAgentContextResponse context(String portfolioId, int maxChars) {
+        PortfolioAgentSnapshot snapshot = snapshot(portfolioId);
+        String profileName = snapshot.profile() == null
+                ? text(snapshot.facts().fullName())
+                : text(snapshot.profile().fullName());
+
+        return new PortfolioAgentContextResponse(
+                snapshot.portfolioId(),
+                profileName,
+                snapshot.facts(),
+                snapshot.chunks(),
+                buildContext(snapshot.chunks(), normalizeMaxChars(maxChars))
+        );
+    }
+
+    public PortfolioAgentReindexResponse reindex(PortfolioAgentReindexRequest request) {
+        String normalizedPortfolioId = PortfolioIds.normalize(request == null ? null : request.portfolioId());
+        PortfolioAgentSnapshot snapshot = snapshot(normalizedPortfolioId);
+        List<PortfolioAgentChunk> chunks = snapshot.chunks();
+
+        vectorStore.ensureSchema();
+        vectorStore.markPortfolioDeleted(normalizedPortfolioId);
+
+        List<List<Double>> embeddings = embeddingService.embedAll(chunks.stream()
+                .map(PortfolioAgentChunk::content)
+                .toList());
+
+        for (int index = 0; index < chunks.size(); index++) {
+            vectorStore.upsertChunk(
+                    normalizedPortfolioId,
+                    chunks.get(index),
+                    embeddings.get(index),
+                    embeddingService.embeddingModel()
+            );
+        }
+
+        return new PortfolioAgentReindexResponse(
+                normalizedPortfolioId,
+                embeddingService.embeddingModel(),
+                chunks.size()
+        );
+    }
+
+    public PortfolioAgentSearchResponse search(PortfolioAgentSearchRequest request) {
+        String normalizedPortfolioId = PortfolioIds.normalize(request == null ? null : request.portfolioId());
+        String query = text(request == null ? "" : request.query());
+
+        if (query.isBlank()) {
+            throw new IllegalArgumentException("Search query is required");
+        }
+
+        PortfolioAgentSnapshot snapshot = snapshot(normalizedPortfolioId);
+        String profileName = snapshot.profile() == null
+                ? text(snapshot.facts().fullName())
+                : text(snapshot.profile().fullName());
+        int limit = normalizeSearchLimit(request == null ? null : request.limit());
+        int maxContextChars = normalizeMaxChars(request == null || request.maxContextChars() == null
+                ? DEFAULT_CONTEXT_MAX_CHARS
+                : request.maxContextChars());
+
+        vectorStore.ensureSchema();
+
+        List<Double> queryEmbedding = embeddingService.embed(query);
+        List<PortfolioAgentSearchResult> results = vectorStore.search(
+                normalizedPortfolioId,
+                queryEmbedding,
+                embeddingService.embeddingModel(),
+                limit
+        );
+
+        if (results.isEmpty()) {
+            reindex(new PortfolioAgentReindexRequest(normalizedPortfolioId));
+            results = vectorStore.search(
+                    normalizedPortfolioId,
+                    queryEmbedding,
+                    embeddingService.embeddingModel(),
+                    limit
+            );
+        }
+
+        return new PortfolioAgentSearchResponse(
+                normalizedPortfolioId,
+                profileName,
+                snapshot.facts(),
+                query,
+                embeddingService.embeddingModel(),
+                results,
+                buildSearchContext(results, maxContextChars)
         );
     }
 
@@ -345,6 +451,55 @@ public class PortfolioAgentService {
 
     private static String slug(String value) {
         return text(value).toLowerCase().replaceAll("[^a-z0-9]+", "-").replaceAll("(^-|-$)", "");
+    }
+
+    private static String buildContext(List<PortfolioAgentChunk> chunks, int maxChars) {
+        String context = String.join("\n\n", chunks.stream()
+                .map(chunk -> lines(
+                        sentence("[%s] %s", chunk.section(), chunk.title()),
+                        chunk.content()
+                ))
+                .filter(value -> !value.isBlank())
+                .toList());
+
+        if (context.length() <= maxChars) {
+            return context;
+        }
+
+        return context.substring(0, maxChars).trim();
+    }
+
+    private static String buildSearchContext(List<PortfolioAgentSearchResult> results, int maxChars) {
+        String context = String.join("\n\n", results.stream()
+                .map(result -> lines(
+                        sentence("[%s] %s", result.section(), result.title()),
+                        sentence("Similarity: %.4f", result.similarity()),
+                        result.content()
+                ))
+                .filter(value -> !value.isBlank())
+                .toList());
+
+        if (context.length() <= maxChars) {
+            return context;
+        }
+
+        return context.substring(0, maxChars).trim();
+    }
+
+    private static int normalizeMaxChars(int maxChars) {
+        if (maxChars <= 0) {
+            return DEFAULT_CONTEXT_MAX_CHARS;
+        }
+
+        return Math.min(Math.max(maxChars, MIN_CONTEXT_MAX_CHARS), MAX_CONTEXT_MAX_CHARS);
+    }
+
+    private static int normalizeSearchLimit(Integer limit) {
+        if (limit == null || limit <= 0) {
+            return DEFAULT_SEARCH_LIMIT;
+        }
+
+        return Math.min(limit, MAX_SEARCH_LIMIT);
     }
 
     private static String text(String value) {

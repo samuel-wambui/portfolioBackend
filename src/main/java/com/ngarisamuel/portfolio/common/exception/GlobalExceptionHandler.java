@@ -36,6 +36,12 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.failure("Validation failed", ApiCode.VALIDATION_ERROR, errors));
     }
 
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ApiResponse<Void>> handleIllegalArgument(IllegalArgumentException exception) {
+        return ResponseEntity.badRequest()
+                .body(ApiResponse.failure(exception.getMessage(), ApiCode.VALIDATION_ERROR, null));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleUnexpected(Exception exception) {
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
