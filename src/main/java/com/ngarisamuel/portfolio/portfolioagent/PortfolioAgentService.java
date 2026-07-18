@@ -219,6 +219,7 @@ public class PortfolioAgentService {
                             sentence("%s is %s.", profile.fullName(), profile.title()),
                             sentence("Hero message: %s", profile.heroText()),
                             sentence("Summary: %s", profile.summary()),
+                            yearsExperienceSentence(profile),
                             sentence("Roles: %s", join(profile.roles())),
                             sentence("Specialized in: %s", join(profile.specializedIn())),
                             sentence("Currently focused on: %s", join(profile.currentlyFocusedOn())),
@@ -241,6 +242,8 @@ public class PortfolioAgentService {
                 "Facts",
                 lines(
                         sentence("Portfolio %s belongs to %s.", facts.portfolioId(), facts.fullName()),
+                        yearsExperienceSentence(profile),
+                        experienceTimelineSentence(facts.fullName(), experience),
                         sentence("%s has %d certifications.", facts.fullName(), facts.certificationCount()),
                         sentence("%s has %d projects.", facts.fullName(), facts.projectCount()),
                         sentence("%s has %d experience entries.", facts.fullName(), facts.experienceCount()),
@@ -433,6 +436,38 @@ public class PortfolioAgentService {
                 .map(PortfolioAgentService::text)
                 .filter(value -> !value.isBlank())
                 .toList());
+    }
+
+    private static String yearsExperienceSentence(ProfileResponse profile) {
+        if (profile == null || profile.yearsExperience() == null || profile.yearsExperience() <= 0) {
+            return "";
+        }
+
+        String fullName = text(profile.fullName()).isBlank() ? "Samuel" : text(profile.fullName());
+
+        return sentence(
+                "%s has %d+ years of professional software engineering, automation, and AI engineering experience.",
+                fullName,
+                profile.yearsExperience()
+        );
+    }
+
+    private static String experienceTimelineSentence(String fullName, List<ExperienceResponse> experience) {
+        if (experience == null || experience.isEmpty()) {
+            return "";
+        }
+
+        String name = text(fullName).isBlank() ? "Samuel" : text(fullName);
+        List<String> roles = experience.stream()
+                .map(item -> sentence("%s at %s (%s to %s)",
+                        item.role(),
+                        item.company(),
+                        item.startDate(),
+                        item.current() ? "Present" : item.endDate()))
+                .filter(value -> !value.isBlank())
+                .toList();
+
+        return sentence("%s's experience timeline includes: %s.", name, String.join("; ", roles));
     }
 
     private static Map<String, List<SkillResponse>> skillsByCategory(List<SkillResponse> skills) {
