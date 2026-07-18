@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class PortfolioAgentController {
 
     private final PortfolioAgentService portfolioAgentService;
+    private final PortfolioAgentN8nService portfolioAgentN8nService;
 
     @GetMapping("/snapshot")
     public ResponseEntity<ApiResponse<PortfolioAgentSnapshot>> getSnapshot(
@@ -64,8 +65,18 @@ public class PortfolioAgentController {
             @RequestBody(required = false) PortfolioAgentReindexRequest request
     ) {
         return ResponseEntity.ok(ApiResponse.success(
-                "Portfolio semantic index refreshed",
-                portfolioAgentService.reindex(request)
+                "Portfolio agent knowledge update requested",
+                portfolioAgentN8nService.reindex(request)
+        ));
+    }
+
+    @PostMapping({"", "/ask"})
+    public ResponseEntity<ApiResponse<PortfolioAgentAskResponse>> ask(
+            @RequestBody(required = false) PortfolioAgentAskRequest request
+    ) {
+        return ResponseEntity.ok(ApiResponse.success(
+                "Portfolio agent answered",
+                portfolioAgentN8nService.ask(request)
         ));
     }
 

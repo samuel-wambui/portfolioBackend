@@ -66,6 +66,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST,
                                 "/api/contact",
                                 "/api/analytics/events",
+                                "/api/portfolio-agent",
+                                "/api/portfolio-agent/ask",
                                 "/api/portfolio-agent/reindex",
                                 "/api/portfolio-agent/search"
                         ).permitAll()
