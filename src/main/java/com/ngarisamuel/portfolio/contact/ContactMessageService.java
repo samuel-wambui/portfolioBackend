@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 public class ContactMessageService {
 
     private final ContactMessageRepository contactMessageRepository;
+    private final ContactEmailService contactEmailService;
 
     public void save(ContactRequest request) {
         ContactMessage message = new ContactMessage();
@@ -16,5 +17,6 @@ public class ContactMessageService {
         message.setSubject(request.subject());
         message.setMessage(request.message());
         contactMessageRepository.save(message);
+        contactEmailService.sendContactMessage(request);
     }
 }
